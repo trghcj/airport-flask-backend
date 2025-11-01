@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: airport-flask-backend
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn Merged_flask_app:app
+    envVars:
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
