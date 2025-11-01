@@ -50,21 +50,25 @@ logger.info(f"Matplotlib backend set to: {matplotlib.get_backend()} at {current_
 
 def initialize_firestore():
     try:
-        cred_path = os.getenv('FIREBASE_CRED_PATH', r"C:\Users\suremdra singh\Desktop\Flutter project\airport-authority-linkage-app\lib\flask-backend\airport-authority-linkage-firebase-adminsdk-fbsvc-d146646df7.json")
-        if not os.path.exists(cred_path):
-            logger.error(f"Firebase credential file not found at: {cred_path} at {current_date.strftime('%Y-%m-%d %H:%M:%S IST')}")
-            raise FileNotFoundError(f"Credential file missing at {cred_path}")
-        cred = credentials.Certificate(cred_path)
-        firebase_admin.initialize_app(cred, {'projectId': 'airport-authority-linkage'})
+        # Check if JSON credentials are provided via environment variable (Render)
+        firebase_json = os.getenv('FIREBASE_CREDENTIALS_JSON')
+        if firebase_json:
+            cred_dict = json.loads(firebase_json)
+            cred = credentials.Certificate(cred_dict)
+        else:
+            # Local development fallback
+            local_path = os.path.join(os.path.dirname(__file__), 'airport-authority-linkage-firebase-adminsdk-fbsvc-d146646df7.json')
+            cred = credentials.Certificate(local_path)
+
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(cred, {'projectId': 'airport-authority-linkage'})
+
         db = firestore.client()
-        logger.info(f"Firestore initialized successfully at {current_date.strftime('%Y-%m-%d %H:%M:%S IST')}")
+        logger.info("Firestore initialized successfully")
         return db
-    except ValueError as ve:
-        logger.warning(f"Firebase app already initialized: {ve} at {current_date.strftime('%Y-%m-%d %H:%M:%S IST')}")
-        db = firestore.client()
-        return db
+
     except Exception as e:
-        logger.error(f"Failed to initialize Firestore: {e}\n{traceback.format_exc()} at {current_date.strftime('%Y-%m-%d %H:%M:%S IST')}")
+        logger.error(f"Firestore initialization failed: {e}\n{traceback.format_exc()}")
         raise
 
 db = initialize_firestore()
