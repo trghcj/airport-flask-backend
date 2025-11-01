@@ -50,25 +50,30 @@ logger.info(f"Matplotlib backend set to: {matplotlib.get_backend()} at {current_
 
 def initialize_firestore():
     try:
-        # Check if JSON credentials are provided via environment variable (Render)
-        firebase_json = os.getenv('FIREBASE_CREDENTIALS_JSON')
-        if firebase_json:
-            cred_dict = json.loads(firebase_json)
-            cred = credentials.Certificate(cred_dict)
-        else:
-            # Local development fallback
-            local_path = os.path.join(os.path.dirname(__file__), 'airport-authority-linkage-firebase-adminsdk-fbsvc-d146646df7.json')
-            cred = credentials.Certificate(local_path)
+        # ✅ Load Firebase credentials from environment variable instead of file
+        firebase_creds_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
 
-        if not firebase_admin._apps:
+        if not firebase_creds_json:
+            logger.error("Firebase credentials not found in environment variables.")
+            raise ValueError("Missing environment variable: GOOGLE_APPLICATION_CREDENTIALS_JSON")
+
+        # Parse the JSON credentials
+        cred_data = json.loads(firebase_creds_json)
+        cred = credentials.Certificate(cred_data)
+
+        # Initialize Firebase app
+        try:
+            firebase_admin.get_app()
+            logger.info("Firebase app already initialized.")
+        except ValueError:
             firebase_admin.initialize_app(cred, {'projectId': 'airport-authority-linkage'})
 
         db = firestore.client()
-        logger.info("Firestore initialized successfully")
+        logger.info("✅ Firestore initialized successfully using environment variable credentials.")
         return db
 
     except Exception as e:
-        logger.error(f"Firestore initialization failed: {e}\n{traceback.format_exc()}")
+        logger.error(f"❌ Failed to initialize Firestore: {e}\n{traceback.format_exc()}")
         raise
 
 db = initialize_firestore()
