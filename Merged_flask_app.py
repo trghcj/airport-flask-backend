@@ -473,64 +473,51 @@ def analyze():
 # --------------------------
 # Search endpoint
 # --------------------------
-@app.route('/search', methods=['GET','OPTIONS'])
+@app.route('/search', methods=['GET', 'OPTIONS'])
 def search():
     if request.method == 'OPTIONS':
         resp = make_response('', 204)
         resp.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+        resp.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
         return resp
 
     doc_id = request.args.get('doc_id')
     query = (request.args.get('query') or '').strip().lower()
-    page = int(request.args.get('page', '0'))
-    limit = int(request.args.get('limit', '100'))
 
     if not doc_id:
         return make_response(jsonify({'error': 'doc_id is required'}), 400)
 
     try:
-        coll = db.collection("analysis_results").document(doc_id).collection("data")
-        docs = coll.get()
-        if not docs:
+        # Access Firestore document directly under stats_upload
+        doc_ref = db.collection('stats_upload').document(doc_id)
+        doc = doc_ref.get()
+
+        if not doc.exists:
             return make_response(jsonify({'error': 'No data found for doc_id'}), 404)
 
-        results = []
-        for d in docs:
-            recs = d.to_dict().get('records', [])
-            for r in recs:
-                # fields are stored as strings largely — parse as needed
-                reg_no = str(r.get('Reg_No', '')).lower()
-                airport = str(r.get('Airport_Name','')).lower()
-                operator = str(r.get('Operator_Name','')).lower()
-                aircraft = str(r.get('Aircraft_Type','')).lower()
+        data = doc.to_dict()
 
-                arr_local_iso = r.get('Arr_Local', '')
-                arr_date_str = 'Unknown'
-                dt = safe_iso_to_dt(arr_local_iso)
-                if dt:
-                    arr_date_str = dt.strftime('%Y-%m-%d')
+        if not data:
+            return make_response(jsonify({'error': 'Document exists but contains no data'}), 404)
 
-                if query:
-                    if (query not in reg_no) and (query not in airport) and (query not in operator) and (query not in aircraft) and (query not in arr_date_str.lower()):
-                        continue
+        # Match query (case-insensitive) in string fields
+        matches = {}
+        for key, value in data.items():
+            if isinstance(value, str) and query in value.lower():
+                matches[key] = value
 
-                results.append({
-                    'Unique_Id': r.get('Unique_Id'),
-                    'Reg_No': r.get('Reg_No', 'Unknown'),
-                    'Arr_Date': arr_date_str,
-                    'Airport_Name': r.get('Airport_Name', 'Unknown'),
-                    'Operator_Name': r.get('Operator_Name', 'Unknown'),
-                    'Aircraft_Type': r.get('Aircraft_Type', 'Unknown'),
-                    'Airtime_Hours': r.get('Airtime_Hours', 0.0),
-                    'Arr_Bill_Status': r.get('Arr_Bill_Status', 'unbilled'),
-                    'Dep_Bill_Status': r.get('Dep_Bill_Status', 'unbilled'),
-                    'UDF_Bill_Status': r.get('UDF_Bill_Status', 'unbilled'),
-                    'Landing': f"₹{float(r.get('Landing', 0.0)):.2f}"
-                })
+        if matches:
+            return make_response(jsonify({
+                'matches': matches,
+                'full_data': data
+            }), 200)
+        else:
+            return make_response(jsonify({
+                'message': 'No match found for query',
+                'data': data
+            }), 200)
 
-        start = page * limit
-        paged = results[start:start+limit]
-        return make_response(jsonify(paged), 200)
     except Exception as e:
         logger.error(f"/search error: {e}\n{traceback.format_exc()}")
         return make_response(jsonify({'error': str(e)}), 500)
