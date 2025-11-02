@@ -495,39 +495,39 @@ def search():
         if not doc.exists:
             return make_response(jsonify({'error': 'No data found for doc_id'}), 404)
 
-        data = doc.to_dict() or {}
+        data = doc.to_dict()
 
-        # 🔹 Recursively flatten nested dicts for searching
-        def flatten_dict(d, parent_key='', sep='.'):
-            items = {}
-            for k, v in d.items():
-                new_key = f"{parent_key}{sep}{k}" if parent_key else k
-                if isinstance(v, dict):
-                    items.update(flatten_dict(v, new_key, sep=sep))
-                else:
-                    items[new_key] = v
-            return items
+        # Flatten if the document has a nested "data" field
+        if 'data' in data and isinstance(data['data'], dict):
+            inner_data = data['data']
+        else:
+            inner_data = data
 
-        flat_data = flatten_dict(data)
+        # No query → return everything for inspection
+        if not query:
+            return make_response(jsonify({
+                'message': 'Full document data (no query provided)',
+                'data': inner_data
+            }), 200)
 
-        # 🔹 Search through flattened data (case-insensitive)
+        # Perform case-insensitive match in both keys and string values
         matches = {}
-        for key, value in flat_data.items():
-            if isinstance(value, str) and query in value.lower():
-                matches[key] = value
-            elif isinstance(value, (int, float)) and str(value).lower() == query:
-                matches[key] = value
+        for k, v in inner_data.items():
+            if isinstance(v, str) and query in v.lower():
+                matches[k] = v
+            elif isinstance(v, (int, float)) and query == str(v).lower():
+                matches[k] = v
 
-        # 🔹 Return appropriate JSON response
         if matches:
             return make_response(jsonify({
+                'message': f'Matched fields for query "{query}"',
                 'matches': matches,
-                'full_data': data
+                'data': inner_data
             }), 200)
         else:
             return make_response(jsonify({
-                'message': 'No match found for query',
-                'data': data
+                'message': f'No match found for query "{query}"',
+                'data': inner_data
             }), 200)
 
     except Exception as e:
