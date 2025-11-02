@@ -534,11 +534,18 @@ def search():
         logger.error(f"/search error: {e}\n{traceback.format_exc()}")
         return make_response(jsonify({'error': str(e)}), 500)
 
+# --------------------------
+# List available Firestore documents (for debugging)
+# --------------------------
 @app.route('/list_docs', methods=['GET'])
 def list_docs():
-    docs = db.collection('stats_upload').stream()
-    ids = [d.id for d in docs]
-    return jsonify({'count': len(ids), 'doc_ids': ids})
+    try:
+        docs = db.collection('stats_upload').stream()
+        ids = [d.id for d in docs]
+        return jsonify({'count': len(ids), 'doc_ids': ids})
+    except Exception as e:
+        logger.error(f"/list_docs error: {e}\n{traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
  
 # --------------------------
 # Stats endpoint
