@@ -471,7 +471,7 @@ def analyze():
         return make_response(jsonify({'success': False, 'error': str(e)}), 500)
 
 # --------------------------
-# Search endpoint
+# Search endpoint (UPDATED to handle nested dicts)
 # --------------------------
 @app.route('/search', methods=['GET', 'OPTIONS'])
 def search():
@@ -489,24 +489,36 @@ def search():
         return make_response(jsonify({'error': 'doc_id is required'}), 400)
 
     try:
-        # Access Firestore document directly under stats_upload
         doc_ref = db.collection('stats_upload').document(doc_id)
         doc = doc_ref.get()
 
         if not doc.exists:
             return make_response(jsonify({'error': 'No data found for doc_id'}), 404)
 
-        data = doc.to_dict()
+        data = doc.to_dict() or {}
 
-        if not data:
-            return make_response(jsonify({'error': 'Document exists but contains no data'}), 404)
+        # 🔹 Recursively flatten nested dicts for searching
+        def flatten_dict(d, parent_key='', sep='.'):
+            items = {}
+            for k, v in d.items():
+                new_key = f"{parent_key}{sep}{k}" if parent_key else k
+                if isinstance(v, dict):
+                    items.update(flatten_dict(v, new_key, sep=sep))
+                else:
+                    items[new_key] = v
+            return items
 
-        # Match query (case-insensitive) in string fields
+        flat_data = flatten_dict(data)
+
+        # 🔹 Search through flattened data (case-insensitive)
         matches = {}
-        for key, value in data.items():
+        for key, value in flat_data.items():
             if isinstance(value, str) and query in value.lower():
                 matches[key] = value
+            elif isinstance(value, (int, float)) and str(value).lower() == query:
+                matches[key] = value
 
+        # 🔹 Return appropriate JSON response
         if matches:
             return make_response(jsonify({
                 'matches': matches,
@@ -522,6 +534,12 @@ def search():
         logger.error(f"/search error: {e}\n{traceback.format_exc()}")
         return make_response(jsonify({'error': str(e)}), 500)
 
+@app.route('/list_docs', methods=['GET'])
+def list_docs():
+    docs = db.collection('stats_upload').stream()
+    ids = [d.id for d in docs]
+    return jsonify({'count': len(ids), 'doc_ids': ids})
+ 
 # --------------------------
 # Stats endpoint
 # --------------------------
